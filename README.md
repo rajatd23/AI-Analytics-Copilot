@@ -54,30 +54,6 @@ No OpenAI, no BigQuery, no paid cloud services.
 
 ---
 
-## 📁 Project Structure
-
-ai-analytics-copilot/
-├── api/
-│ ├── main.py # FastAPI app
-│ ├── llm_ollama.py # LLM → SQL logic
-│ ├── db.py # PostgreSQL connection
-│ ├── schema.py # Database schema context
-│ ├── seed.py # Create & seed demo data
-│ ├── requirements.txt
-│ └── .env.example
-│
-├── frontend/
-│ ├── app.py # Streamlit UI
-│ ├── requirements.txt
-│ └── .streamlit/
-│ └── secrets.toml.example
-│
-├── .gitignore
-└── README.md
-
-
----
-
 ## ⚙️ Prerequisites
 
 Install the following on your machine:
