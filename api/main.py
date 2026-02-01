@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from datetime import date
+from fastapi import Query
 
 from db import run_sql, init_history_table, save_history, list_history
 from llm_ollama import generate_plan
@@ -109,32 +111,121 @@ def history(limit: int = 50):
 # ---- Dashboard endpoints (simple, extend later) ----
 
 @app.get("/dashboard/kpis")
-def dashboard_kpis():
-    kpi = {}
-    # total orders
-    kpi["orders"] = run_sql("SELECT COUNT(*)::int AS value FROM orders;")[0]["value"]
-    # total revenue (from orders.amount)
-    kpi["revenue"] = float(run_sql("SELECT COALESCE(SUM(amount),0) AS value FROM orders;")[0]["value"])
-    # aov
-    kpi["aov"] = float(run_sql("SELECT COALESCE(AVG(amount),0) AS value FROM orders;")[0]["value"])
-    # top product by revenue (from order_items)
-    top = run_sql("""
-        SELECT product, SUM(quantity*price) AS revenue
-        FROM order_items
-        GROUP BY product
+def dashboard_kpis(
+    start: str = Query(None, description="YYYY-MM-DD"),
+    end: str = Query(None, description="YYYY-MM-DD"),
+    status: str = Query("all", description="order status or 'all'")
+):
+    where = []
+    params = []
+
+    if start:
+        where.append("created_at::date >= %s")
+        params.append(start)
+    if end:
+        where.append("created_at::date <= %s")
+        params.append(end)
+    if status and status.lower() != "all":
+        where.append("status = %s")
+        params.append(status)
+
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    orders = run_sql(f"SELECT COUNT(*)::int AS value FROM orders {where_sql};", params)[0]["value"]
+    revenue = run_sql(f"SELECT COALESCE(SUM(amount),0) AS value FROM orders {where_sql};", params)[0]["value"]
+    aov = run_sql(f"SELECT COALESCE(AVG(amount),0) AS value FROM orders {where_sql};", params)[0]["value"]
+
+    top = run_sql(
+        f"""
+        SELECT oi.product, SUM(oi.quantity*oi.price) AS revenue
+        FROM order_items oi
+        JOIN orders o ON o.order_id = oi.order_id
+        {where_sql.replace("created_at", "o.created_at").replace("status", "o.status")}
+        GROUP BY oi.product
         ORDER BY revenue DESC
         LIMIT 1;
-    """)
-    kpi["top_product"] = top[0]["product"] if top else ""
-    return kpi
+        """,
+        params
+    )
+
+    return {
+        "orders": orders,
+        "revenue": float(revenue),
+        "aov": float(aov),
+        "top_product": top[0]["product"] if top else ""
+    }
+
 
 @app.get("/dashboard/revenue_trend")
-def revenue_trend():
-    rows = run_sql("""
-      SELECT DATE(created_at) AS day, SUM(amount) AS revenue
-      FROM orders
-      GROUP BY day
-      ORDER BY day
-      LIMIT 200;
-    """)
+def revenue_trend(
+    start: str = Query(None, description="YYYY-MM-DD"),
+    end: str = Query(None, description="YYYY-MM-DD"),
+    status: str = Query("all", description="order status or 'all'")
+):
+    where = []
+    params = []
+
+    if start:
+        where.append("created_at::date >= %s")
+        params.append(start)
+    if end:
+        where.append("created_at::date <= %s")
+        params.append(end)
+    if status and status.lower() != "all":
+        where.append("status = %s")
+        params.append(status)
+
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    rows = run_sql(
+        f"""
+        SELECT created_at::date AS day, SUM(amount) AS revenue
+        FROM orders
+        {where_sql}
+        GROUP BY day
+        ORDER BY day
+        LIMIT 400;
+        """,
+        params
+    )
+
+    return {"data": rows}
+
+
+@app.get("/dashboard/top_products")
+def top_products(
+    start: str = Query(None),
+    end: str = Query(None),
+    status: str = Query("all"),
+    limit: int = Query(10, ge=1, le=50)
+):
+    where = []
+    params = []
+
+    if start:
+        where.append("o.created_at::date >= %s")
+        params.append(start)
+    if end:
+        where.append("o.created_at::date <= %s")
+        params.append(end)
+    if status and status.lower() != "all":
+        where.append("o.status = %s")
+        params.append(status)
+
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    rows = run_sql(
+        f"""
+        SELECT oi.product,
+               SUM(oi.quantity) AS units,
+               SUM(oi.quantity*oi.price) AS revenue
+        FROM order_items oi
+        JOIN orders o ON o.order_id = oi.order_id
+        {where_sql}
+        GROUP BY oi.product
+        ORDER BY revenue DESC
+        LIMIT %s;
+        """,
+        params + [limit]
+    )
     return {"data": rows}

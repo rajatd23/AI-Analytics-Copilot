@@ -69,9 +69,10 @@ def list_history(limit: int = 50):
             )
             return cur.fetchall()
 
-def run_sql(sql_text: str):
+def run_sql(sql_text: str, params=None):
+    params = params or []
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(sql_text)
+            cur.execute(sql_text, params)
             rows = cur.fetchall()
             return rows
