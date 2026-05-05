@@ -80,7 +80,11 @@ How to Run the Project:
 
 🔹 Step 1: Start Backend (FastAPI)
 cd api
-python -m uvicorn main:app --host 0.0.0.0 --port 8080
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --reload --host 127.0.0.1 --port 8080
+# python -m uvicorn main:app --host 0.0.0.0 --port 8080
 
 http://localhost:8080/health
 
